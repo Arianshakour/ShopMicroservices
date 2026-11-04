@@ -11,6 +11,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "OrderService", "OrderServic
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "InventoryService", "InventoryService\InventoryService.csproj", "{69D2B828-A47F-46E4-8B18-3C093230268F}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "OrderRecoveryWorker", "OrderRecoveryWorker\OrderRecoveryWorker.csproj", "{031B552F-C774-4225-9614-780478E0C20A}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -33,6 +35,10 @@ Global
 		{69D2B828-A47F-46E4-8B18-3C093230268F}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{69D2B828-A47F-46E4-8B18-3C093230268F}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{69D2B828-A47F-46E4-8B18-3C093230268F}.Release|Any CPU.Build.0 = Release|Any CPU
+		{031B552F-C774-4225-9614-780478E0C20A}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{031B552F-C774-4225-9614-780478E0C20A}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{031B552F-C774-4225-9614-780478E0C20A}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{031B552F-C774-4225-9614-780478E0C20A}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

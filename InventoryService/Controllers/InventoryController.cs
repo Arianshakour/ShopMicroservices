@@ -98,7 +98,7 @@ namespace InventoryService.Controllers
                     .ToList();
 
             if (!reservations.Any())
-                return NotFound("No reservations found for this order.");
+                return Ok("No reservations to release.");
 
             foreach (var reservation in reservations)
             {

@@ -33,6 +33,15 @@ namespace OrderService.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime2");
 
+                    b.Property<bool>("IsRecoveryLocked")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTime>("LastSagaActivityAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("RecoveryLockedAt")
+                        .HasColumnType("datetime2");
+
                     b.Property<int>("Status")
                         .HasColumnType("int");
 

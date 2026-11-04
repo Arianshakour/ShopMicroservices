@@ -31,7 +31,7 @@ namespace OrderService.Controllers
                                 Id = x.Id,
                                 CreatedAt = x.CreatedAt,
                                 TotalPrice = x.TotalPrice,
-
+                                Status = x.Status,
                                 Items = x.Items.Select(i => new OrderItemDto
                                 {
                                     ProductId = i.ProductId,
@@ -56,7 +56,7 @@ namespace OrderService.Controllers
                                 Id = x.Id,
                                 CreatedAt = x.CreatedAt,
                                 TotalPrice = x.TotalPrice,
-
+                                Status = x.Status,
                                 Items = x.Items.Select(i => new OrderItemDto
                                 {
                                     ProductId = i.ProductId,
@@ -88,7 +88,7 @@ namespace OrderService.Controllers
         }
         [HttpPost]
         public async Task<IActionResult> Create(CreateOrderRequest request,
-    CancellationToken cancellationToken)
+            CancellationToken cancellationToken)
         {
             //vorodie cancellationToken baraye ineke age karbar darkhastesho laqv kard ya ertebat qat shod
             //darkhast http ham betone laqv beshe
@@ -96,78 +96,155 @@ namespace OrderService.Controllers
             if (request.Items == null || !request.Items.Any())
                 return BadRequest("Order must have at least one item.");
 
-            var client = _httpClientFactory.CreateClient("ProductService");
+            if (request.Items.Any(x => x.ProductId <= 0 || x.Quantity <= 0))
+                return BadRequest("Invalid order items.");
 
+            var productClient = _httpClientFactory.CreateClient("ProductService");
+            var inventoryClient = _httpClientFactory.CreateClient("InventoryService");
+
+            //Step1 =>getproduct
             var order = new Order
             {
-                CreatedAt = DateTime.UtcNow
+                CreatedAt = DateTime.UtcNow,
+                LastSagaActivityAt = DateTime.UtcNow,
+                Status = OrderStatus.Pending
             };
 
-            foreach (var item in request.Items)
+            try
             {
-                ProductDto? product;
-                HttpResponseMessage response;
+                foreach (var item in request.Items)
+                {
+                    var response = await productClient.GetAsync(
+                        $"api/products/{item.ProductId}");
 
-                if (item.Quantity <= 0)
-                    return BadRequest("Quantity must be greater than zero.");
+                    if (!response.IsSuccessStatusCode)
+                    {
+                        if (response.StatusCode == HttpStatusCode.NotFound)
+                            return NotFound($"Product {item.ProductId} not found.");
 
-                //Modiriat khata va modiriat qat boodan shabake Product
+                        return StatusCode(502, "ProductService returned an error.");
+                    }
+
+                    var product = await response.Content.ReadFromJsonAsync<ProductDto>();
+
+                    if (product == null)
+                        return StatusCode(502, "Invalid response from ProductService.");
+
+                    order.Items.Add(new OrderItem
+                    {
+                        ProductId = product.Id,
+                        ProductName = product.Name,
+                        UnitPrice = product.Price,
+                        Quantity = item.Quantity,
+                        TotalPrice = product.Price * item.Quantity
+                    });
+
+                    order.TotalPrice += product.Price * item.Quantity;
+                }
+            }
+            catch (HttpRequestException)
+            {
+                return StatusCode(503, "ProductService is unavailable.");
+            }
+            catch (TaskCanceledException)
+            {
+                return StatusCode(503, "ProductService request timed out.");
+            }
+
+            //step2 => create order with pending
+            _db.Orders.Add(order);
+
+            await _db.SaveChangesAsync(cancellationToken);
+
+            //baraye test dashtan status pending
+            //return Ok();
+
+            // step3 => reserve
+            bool reservationFailed = false;
+
+            try
+            {
+                foreach (var item in order.Items)
+                {
+                    var response = await inventoryClient.PostAsJsonAsync(
+                        "api/inventory/reserve",
+                        new
+                        {
+                            OrderId = order.Id,
+                            item.ProductId,
+                            item.Quantity
+                        });
+
+                    if (!response.IsSuccessStatusCode)
+                    {
+                        reservationFailed = true;
+                        break;
+                    }
+
+                    // رزرو موفق بوده؛ زمان آخرین فعالیت را به‌روز می‌کنیم
+                    order.LastSagaActivityAt = DateTime.UtcNow;
+
+                    await _db.SaveChangesAsync();
+                }
+            }
+            catch (HttpRequestException)
+            {
+                reservationFailed = true;
+            }
+            catch (TaskCanceledException)
+            {
+                reservationFailed = true;
+            }
+
+            // step4 => jobrani
+            if (reservationFailed)
+            {
                 try
                 {
-                    response = await client.GetAsync(
-                        $"api/products/{item.ProductId}", cancellationToken);
-                }
-                catch (BrokenCircuitException)
-                {
-                    return StatusCode(503, "ProductService circuit is open.");
-                }
-                catch (TimeoutRejectedException)
-                {
-                    return StatusCode(504, "ProductService request timed out.");
+                    var releaseResponse = await inventoryClient.PostAsJsonAsync(
+                        "api/inventory/release",
+                        new
+                        {
+                            OrderId = order.Id
+                        });
+
+                    if (releaseResponse.IsSuccessStatusCode)
+                    {
+                        order.Status = OrderStatus.Cancelled;
+                        await _db.SaveChangesAsync();
+
+                        return BadRequest(
+                            $"Order cancelled. Stock reservations released. OrderId: {order.Id}");
+                    }
                 }
                 catch (HttpRequestException)
                 {
-                    return StatusCode(503, "ProductService is unavailable.");
+                    // Compensation failed
                 }
                 catch (TaskCanceledException)
                 {
-                    return StatusCode(504, "ProductService request timed out.");
+                    // Compensation timed out
                 }
 
-                if (response.StatusCode == HttpStatusCode.NotFound)
-                    return NotFound($"Product {item.ProductId} not found.");
-
-                if (!response.IsSuccessStatusCode)
-                    return StatusCode(502, "Error while communicating with ProductService.");
-
-                product = await response.Content.ReadFromJsonAsync<ProductDto>();
-
-                if (product == null)
-                    return StatusCode(502, "Invalid response from ProductService.");
-
-                var orderItem = new OrderItem
-                {
-                    ProductId = product.Id,
-                    ProductName = product.Name,
-                    UnitPrice = product.Price,
-                    Quantity = item.Quantity,
-                    TotalPrice = product.Price * item.Quantity
-                };
-
-                order.Items.Add(orderItem);
-                order.TotalPrice += orderItem.TotalPrice;
+                // اگر Compensation موفق نشد، سفارش Pending باقی می‌ماند.
+                return StatusCode(
+                    503,
+                    $"Stock reservation failed. Order {order.Id} requires recovery.");
             }
 
-            _db.Orders.Add(order);
+            
 
-            await _db.SaveChangesAsync();
+            // step 5 => confirm reserve
+            order.Status = OrderStatus.Confirmed;
 
-            var result = new OrderDto
+            await _db.SaveChangesAsync(cancellationToken);
+
+            return Ok(new OrderDto
             {
                 Id = order.Id,
                 CreatedAt = order.CreatedAt,
                 TotalPrice = order.TotalPrice,
-
+                Status = order.Status,
                 Items = order.Items.Select(x => new OrderItemDto
                 {
                     ProductId = x.ProductId,
@@ -176,9 +253,7 @@ namespace OrderService.Controllers
                     Quantity = x.Quantity,
                     TotalPrice = x.TotalPrice
                 }).ToList()
-            };
-
-            return Ok(result);
+            });
         }
     }
 }
