@@ -39,6 +39,8 @@ public class Worker : BackgroundService
         //injoori atomic update mikonim vaqti bishtar az yek worker dashtim
         var now = DateTime.UtcNow;
 
+        //chon momkene 2 ya chand nemone az worker dashte bashim lock c# javab nemide
+        //chon lock c# faqat roye hamon nemone kar mikone pas injori minevisim dar zemn sql injection ham nadare
         return await db.Orders
             .FromSqlInterpolated($@"
             UPDATE TOP (10) Orders

@@ -3,6 +3,7 @@ using InventoryService.Dtos;
 using InventoryService.Entities;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using System.Data;
 
 namespace InventoryService.Controllers
 {
@@ -61,6 +62,25 @@ namespace InventoryService.Controllers
                 return BadRequest("Invalid request.");
             }
 
+            //Idempotency
+            //chek kardan tekrari boodan sefaresh ba hamoon product
+            var existingReservation = _db.StockReservations.FirstOrDefault(x =>
+                x.OrderId == request.OrderId &&
+                x.ProductId == request.ProductId);
+
+            if (existingReservation != null)
+            {
+                if (existingReservation.Quantity != request.Quantity)
+                    return Conflict("Reservation already exists with a different quantity.");
+
+                return Ok(existingReservation);
+            }
+
+
+            //Race Condition
+            //baraye jelogiri az 2 request hamzaman va atomic kardane gereftan product va kam kardane mojodi
+            using var transaction = _db.Database.BeginTransaction(IsolationLevel.Serializable);
+
             var inventory = _db.Inventories
                 .FirstOrDefault(x => x.ProductId == request.ProductId);
 
@@ -83,9 +103,40 @@ namespace InventoryService.Controllers
 
             _db.StockReservations.Add(reservation);
 
-            _db.SaveChanges();
+            try
+            {
+                _db.SaveChanges();
 
-            return Ok(reservation);
+                transaction.Commit();
+
+                return Ok(reservation);
+            }
+            catch (DbUpdateException ex)//modoriate Unique Index ke gozashtam dar dbcontext
+                when (ex.InnerException is Microsoft.Data.SqlClient.SqlException sqlEx
+                      && (sqlEx.Number == 2601 || sqlEx.Number == 2627))
+            {
+
+                transaction.Rollback();
+
+                _db.Entry(reservation).State = EntityState.Detached;
+                //خط Detached باعث می‌شه Entity رزروی که ذخیره‌سازی‌اش شکست خورده، در Change Tracker باقی نمونه
+
+                existingReservation = _db.StockReservations
+                    .AsNoTracking()
+                    .FirstOrDefault(x =>
+                        x.OrderId == request.OrderId &&
+                        x.ProductId == request.ProductId);
+
+                if (existingReservation != null)
+                {
+                    if (existingReservation.Quantity != request.Quantity)
+                        return Conflict("Reservation already exists with a different quantity.");
+
+                    return Ok(existingReservation);
+                }
+
+                throw;
+            }
 
         }
 
@@ -93,12 +144,27 @@ namespace InventoryService.Controllers
         [HttpPost("release")]
         public IActionResult ReleaseStock(ReleaseStockRequest request)
         {
+            if (request.OrderId <= 0)
+                return BadRequest("Invalid OrderId.");
+
+            //Race Condition
+            using var transaction = _db.Database.BeginTransaction(IsolationLevel.Serializable);
+
+            //chon momkene 2 ya chand nemone az Inventory service dashte bashim lock c# javab nemide
+            //chon lock c# faqat roye hamon nemone kar mikone pas injori minevisim dar zemn sql injection ham nadare
             var reservations = _db.StockReservations
-                .Where(x => x.OrderId == request.OrderId)
-                    .ToList();
+                .FromSqlInterpolated($@"
+                SELECT *
+                FROM StockReservations WITH (UPDLOCK, HOLDLOCK)
+                WHERE OrderId = {request.OrderId}
+                ")
+                .ToList();
 
             if (!reservations.Any())
+            {
+                transaction.Commit();
                 return Ok("No reservations to release.");
+            }
 
             foreach (var reservation in reservations)
             {
@@ -115,6 +181,8 @@ namespace InventoryService.Controllers
             _db.StockReservations.RemoveRange(reservations);
 
             _db.SaveChanges();
+
+            transaction.Commit();
 
             return Ok("Stock released successfully.");
         }

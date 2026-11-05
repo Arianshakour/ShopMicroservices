@@ -66,6 +66,9 @@ namespace InventoryService.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("OrderId", "ProductId")
+                        .IsUnique();
+
                     b.ToTable("StockReservations");
                 });
 #pragma warning restore 612, 618
