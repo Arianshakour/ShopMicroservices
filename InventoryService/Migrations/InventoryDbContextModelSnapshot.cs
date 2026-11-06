@@ -44,6 +44,29 @@ namespace InventoryService.Migrations
                     b.ToTable("Inventories");
                 });
 
+            modelBuilder.Entity("InventoryService.Entities.OrderInventoryState", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("OrderId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OrderId")
+                        .IsUnique();
+
+                    b.ToTable("OrderInventoryStates");
+                });
+
             modelBuilder.Entity("InventoryService.Entities.StockReservation", b =>
                 {
                     b.Property<int>("Id")

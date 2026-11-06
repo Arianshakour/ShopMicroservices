@@ -1,5 +1,7 @@
 using InventoryService.Data;
+using InventoryService.Messaging;
 using Microsoft.EntityFrameworkCore;
+using RabbitMQ.Client;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -13,6 +15,27 @@ builder.Services.AddSwaggerGen();
 builder.Services.AddDbContext<InventoryDbContext>(options =>
     options.UseSqlServer(
         builder.Configuration.GetConnectionString("InventoryDb")));
+
+
+
+//config vasl shodan be RabbitMQ
+builder.Services.AddSingleton<IConnection>(sp =>
+{
+    var factory = new ConnectionFactory
+    {
+        HostName = "localhost",
+        UserName = "guest",
+        Password = "guest"
+    };
+
+    return factory.CreateConnectionAsync().GetAwaiter().GetResult();
+});
+
+
+builder.Services.AddHostedService<OrderCancellingConsumer>();
+
+builder.Services.AddHostedService<OrderCancelledConsumer>();
+
 
 var app = builder.Build();
 

@@ -1,7 +1,9 @@
 ﻿using System.Net.Http.Json;
+using Contracts.Events;
 using Microsoft.EntityFrameworkCore;
 using OrderService.Data;
 using OrderService.Entities;
+using OrderService.Messaging;
 
 namespace OrderRecoveryWorker;
 
@@ -15,12 +17,15 @@ public class Worker : BackgroundService
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly ILogger<Worker> _logger;
+    private readonly RabbitMqPublisher _publisher;
 
-    public Worker(IServiceScopeFactory scopeFactory,IHttpClientFactory httpClientFactory,ILogger<Worker> logger)
+    public Worker(IServiceScopeFactory scopeFactory,IHttpClientFactory httpClientFactory,ILogger<Worker> logger
+        , RabbitMqPublisher publisher)
     {
         _scopeFactory = scopeFactory;
         _httpClientFactory = httpClientFactory;
         _logger = logger;
+        _publisher = publisher;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -48,7 +53,11 @@ public class Worker : BackgroundService
                 IsRecoveryLocked = 1,
                 RecoveryLockedAt = {now}
             OUTPUT INSERTED.*
-            WHERE Status = {(int)OrderStatus.Pending}
+            WHERE Status IN
+                (
+                    {(int)OrderStatus.Pending},
+                    {(int)OrderStatus.Cancelling}
+                )
               AND LastSagaActivityAt < {now.AddMinutes(-1)}
               AND
               (
@@ -87,6 +96,21 @@ public class Worker : BackgroundService
                     "Recovering Order {OrderId}",
                     order.Id);
 
+                if (order.Status == OrderStatus.Pending)
+                {
+                    order.Status = OrderStatus.Cancelling;
+                    order.LastSagaActivityAt = DateTime.UtcNow;
+
+                    await db.SaveChangesAsync(cancellationToken);
+                }
+
+                await _publisher.PublishOrderCancellingAsync(
+                    new OrderCancellingEvent
+                    {
+                        OrderId = order.Id,
+                        OccurredAt = DateTime.UtcNow
+                    });
+
                 var response = await inventoryClient.PostAsJsonAsync(
                     "api/inventory/release",
                     new { OrderId = order.Id },
@@ -101,7 +125,17 @@ public class Worker : BackgroundService
                     continue;
                 }
 
+                await _publisher.PublishOrderCancelledAsync(
+                    new OrderCancelledEvent
+                    {
+                        OrderId = order.Id,
+                        OccurredAt = DateTime.UtcNow
+                    });
+
                 order.Status = OrderStatus.Cancelled;
+                order.LastSagaActivityAt = DateTime.UtcNow;
+
+                await db.SaveChangesAsync(cancellationToken);
 
                 _logger.LogInformation(
                     "Order {OrderId} recovered successfully.",

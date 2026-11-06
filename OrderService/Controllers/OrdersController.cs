@@ -1,8 +1,10 @@
-﻿using Microsoft.AspNetCore.Mvc;
+﻿using Contracts.Events;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using OrderService.Data;
 using OrderService.Dtos;
 using OrderService.Entities;
+using OrderService.Messaging;
 using Polly.CircuitBreaker;
 using Polly.Timeout;
 using System.Net;
@@ -15,10 +17,12 @@ namespace OrderService.Controllers
     {
         private readonly IHttpClientFactory _httpClientFactory;
         private readonly OrderDbContext _db;
-        public OrdersController(IHttpClientFactory httpClientFactory, OrderDbContext db)
+        private readonly RabbitMqPublisher _publisher;
+        public OrdersController(IHttpClientFactory httpClientFactory, OrderDbContext db, RabbitMqPublisher publisher)
         {
             _httpClientFactory = httpClientFactory;
             _db = db;
+            _publisher = publisher;
         }
 
         [HttpGet]
@@ -201,6 +205,20 @@ namespace OrderService.Controllers
             {
                 try
                 {
+                    // 1. تغییر وضعیت سفارش
+                    order.Status = OrderStatus.Cancelling;
+                    order.LastSagaActivityAt = DateTime.UtcNow;
+
+                    await _db.SaveChangesAsync();
+
+                    // 2. انتشار Event
+                    await _publisher.PublishOrderCancellingAsync(
+                        new OrderCancellingEvent
+                        {
+                            OrderId = order.Id,
+                            OccurredAt = DateTime.UtcNow
+                        });
+
                     var releaseResponse = await inventoryClient.PostAsJsonAsync(
                         "api/inventory/release",
                         new
@@ -210,7 +228,15 @@ namespace OrderService.Controllers
 
                     if (releaseResponse.IsSuccessStatusCode)
                     {
+                        await _publisher.PublishOrderCancelledAsync(
+                            new OrderCancelledEvent
+                            {
+                                OrderId = order.Id,
+                                OccurredAt = DateTime.UtcNow
+                            });
+
                         order.Status = OrderStatus.Cancelled;
+                        order.LastSagaActivityAt = DateTime.UtcNow;
                         await _db.SaveChangesAsync();
 
                         return BadRequest(
@@ -226,7 +252,7 @@ namespace OrderService.Controllers
                     // Compensation timed out
                 }
 
-                // اگر Compensation موفق نشد، سفارش Pending باقی می‌ماند.
+                // اگر Compensation موفق نشد، سفارش Cancelling باقی می‌ماند.
                 return StatusCode(
                     503,
                     $"Stock reservation failed. Order {order.Id} requires recovery.");

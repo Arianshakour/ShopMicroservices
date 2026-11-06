@@ -12,6 +12,7 @@ namespace InventoryService.Data
 
         public DbSet<Inventory> Inventories { get; set; }
         public DbSet<StockReservation> StockReservations { get; set; }
+        public DbSet<OrderInventoryState> OrderInventoryStates { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -19,6 +20,10 @@ namespace InventoryService.Data
 
             modelBuilder.Entity<StockReservation>()
                 .HasIndex(x => new { x.OrderId, x.ProductId })
+                .IsUnique();
+
+            modelBuilder.Entity<OrderInventoryState>()
+                .HasIndex(x => x.OrderId)
                 .IsUnique();
         }
     }

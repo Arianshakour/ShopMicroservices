@@ -13,6 +13,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "InventoryService", "Invento
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "OrderRecoveryWorker", "OrderRecoveryWorker\OrderRecoveryWorker.csproj", "{031B552F-C774-4225-9614-780478E0C20A}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Contracts", "Contracts\Contracts.csproj", "{AA12B25A-A543-4982-BF50-AFCA954D9242}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -39,6 +41,10 @@ Global
 		{031B552F-C774-4225-9614-780478E0C20A}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{031B552F-C774-4225-9614-780478E0C20A}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{031B552F-C774-4225-9614-780478E0C20A}.Release|Any CPU.Build.0 = Release|Any CPU
+		{AA12B25A-A543-4982-BF50-AFCA954D9242}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{AA12B25A-A543-4982-BF50-AFCA954D9242}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{AA12B25A-A543-4982-BF50-AFCA954D9242}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{AA12B25A-A543-4982-BF50-AFCA954D9242}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

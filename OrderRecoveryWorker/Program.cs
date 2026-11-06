@@ -1,6 +1,8 @@
 using Microsoft.EntityFrameworkCore;
 using OrderRecoveryWorker;
 using OrderService.Data;
+using OrderService.Messaging;
+using RabbitMQ.Client;
 
 var builder = Host.CreateApplicationBuilder(args);
 builder.Services.AddHostedService<Worker>();
@@ -16,6 +18,22 @@ builder.Services.AddHttpClient("InventoryService", client =>
     client.BaseAddress = new Uri("http://localhost:5091/");
 });
 
+
+
+//config vasl shodan be RabbitMQ
+builder.Services.AddSingleton<IConnection>(sp =>
+{
+    var factory = new ConnectionFactory
+    {
+        HostName = "localhost",
+        UserName = "guest",
+        Password = "guest"
+    };
+
+    return factory.CreateConnectionAsync().GetAwaiter().GetResult();
+});
+
+builder.Services.AddSingleton<RabbitMqPublisher>();
 
 var host = builder.Build();
 host.Run();

@@ -76,6 +76,15 @@ namespace InventoryService.Controllers
                 return Ok(existingReservation);
             }
 
+            //baresi Vaziat Sefaresh
+            var orderState = _db.OrderInventoryStates
+                .FirstOrDefault(x => x.OrderId == request.OrderId);
+
+            if (orderState != null &&
+                (orderState.Status == "Cancelling" || orderState.Status == "Cancelled"))
+            {
+                return Conflict("Order is cancelling or already cancelled.");
+            }
 
             //Race Condition
             //baraye jelogiri az 2 request hamzaman va atomic kardane gereftan product va kam kardane mojodi
