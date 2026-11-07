@@ -18,11 +18,14 @@ namespace OrderService.Controllers
         private readonly IHttpClientFactory _httpClientFactory;
         private readonly OrderDbContext _db;
         private readonly RabbitMqPublisher _publisher;
-        public OrdersController(IHttpClientFactory httpClientFactory, OrderDbContext db, RabbitMqPublisher publisher)
+        private readonly OutboxService _outbox;
+        public OrdersController(IHttpClientFactory httpClientFactory, OrderDbContext db, RabbitMqPublisher publisher
+            , OutboxService outbox)
         {
             _httpClientFactory = httpClientFactory;
             _db = db;
             _publisher = publisher;
+            _outbox = outbox;
         }
 
         [HttpGet]
@@ -200,6 +203,9 @@ namespace OrderService.Controllers
                 reservationFailed = true;
             }
 
+            //baraye test dashtan status pending
+            //return Ok();
+
             // step4 => jobrani
             if (reservationFailed)
             {
@@ -228,16 +234,26 @@ namespace OrderService.Controllers
 
                     if (releaseResponse.IsSuccessStatusCode)
                     {
-                        await _publisher.PublishOrderCancelledAsync(
+                        //Comment kardam chon az outBox estefade kardam dar zir
+                        //await _publisher.PublishOrderCancelledAsync(
+                        //    new OrderCancelledEvent
+                        //    {
+                        //        OrderId = order.Id,
+                        //        OccurredAt = DateTime.UtcNow
+                        //    });
+
+                        order.Status = OrderStatus.Cancelled;
+                        order.LastSagaActivityAt = DateTime.UtcNow;
+
+                        _outbox.Add(
                             new OrderCancelledEvent
                             {
                                 OrderId = order.Id,
                                 OccurredAt = DateTime.UtcNow
                             });
 
-                        order.Status = OrderStatus.Cancelled;
-                        order.LastSagaActivityAt = DateTime.UtcNow;
                         await _db.SaveChangesAsync();
+                        //با SaveChangesAsync هم وضعیت سفارش و هم پیام Outbox ذخیره می‌شن
 
                         return BadRequest(
                             $"Order cancelled. Stock reservations released. OrderId: {order.Id}");

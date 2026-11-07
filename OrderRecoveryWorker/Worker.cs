@@ -18,8 +18,7 @@ public class Worker : BackgroundService
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly ILogger<Worker> _logger;
     private readonly RabbitMqPublisher _publisher;
-
-    public Worker(IServiceScopeFactory scopeFactory,IHttpClientFactory httpClientFactory,ILogger<Worker> logger
+    public Worker(IServiceScopeFactory scopeFactory,IHttpClientFactory httpClientFactory, ILogger<Worker> logger
         , RabbitMqPublisher publisher)
     {
         _scopeFactory = scopeFactory;
@@ -70,13 +69,15 @@ public class Worker : BackgroundService
 
     private async Task RecoverPendingOrders(CancellationToken cancellationToken)
     {
+        //In Worker be sorat Singletone hast
+        //vali ma dakhelesh be OrderDbContext va OutboxService niaz darim ke Scoped hastan
+        //age biaim dar constructor inject konim khata mide ke dar singletone nemitooni az scoped estefade koni
+        //rahesh estefade az IServiceScopeFactory hast bad biaim mese khat zir be oon service haye scoped dastresi dashte bashim
         using var scope = _scopeFactory.CreateScope();
 
-        var db = scope.ServiceProvider
-            .GetRequiredService<OrderDbContext>();
+        var db = scope.ServiceProvider.GetRequiredService<OrderDbContext>();
 
-        var inventoryClient = _httpClientFactory
-            .CreateClient("InventoryService");
+        var inventoryClient = _httpClientFactory.CreateClient("InventoryService");
 
         //var pendingOrders = await db.Orders
         //    .Where(x =>
@@ -125,7 +126,18 @@ public class Worker : BackgroundService
                     continue;
                 }
 
-                await _publisher.PublishOrderCancelledAsync(
+
+                //Comment kardam chon az outBox estefade kardam dar zir
+                //await _publisher.PublishOrderCancelledAsync(
+                //    new OrderCancelledEvent
+                //    {
+                //        OrderId = order.Id,
+                //        OccurredAt = DateTime.UtcNow
+                //    });
+
+                var outbox = scope.ServiceProvider.GetRequiredService<OutboxService>();
+
+                outbox.Add(
                     new OrderCancelledEvent
                     {
                         OrderId = order.Id,

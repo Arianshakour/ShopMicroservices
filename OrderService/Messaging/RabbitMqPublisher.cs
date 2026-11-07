@@ -41,7 +41,7 @@ namespace OrderService.Messaging
         }
 
 
-        //In Event miad OrderInventoryState onaei ke cancelling mikone cancelled ke Inventory ham bedone cancelled shodan
+        //In Event miad OrderInventoryState onaei ke cancelling hastan mikone cancelled ke Inventory ham bedone cancelled shodan
         public async Task PublishOrderCancelledAsync(OrderCancelledEvent message)
         {
             await using var channel =

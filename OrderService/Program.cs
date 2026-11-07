@@ -61,6 +61,8 @@ builder.Services.AddSingleton<IConnection>(sp =>
 
 builder.Services.AddSingleton<RabbitMqPublisher>();
 
+builder.Services.AddScoped<OutboxService>();
+
 var app = builder.Build();
 
 // Configure the HTTP request pipeline.

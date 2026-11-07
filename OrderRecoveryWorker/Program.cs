@@ -35,5 +35,9 @@ builder.Services.AddSingleton<IConnection>(sp =>
 
 builder.Services.AddSingleton<RabbitMqPublisher>();
 
+builder.Services.AddScoped<OutboxService>();
+
+builder.Services.AddHostedService<OutboxPublisherWorker>();
+
 var host = builder.Build();
 host.Run();
