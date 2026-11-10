@@ -15,5 +15,8 @@
         public int RetryCount { get; set; }
 
         public string? Error { get; set; }
+
+        public DateTime? LockedUntil { get; set; }
+        public string? LockedBy { get; set; }
     }
 }

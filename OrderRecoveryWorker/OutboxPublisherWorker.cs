@@ -1,6 +1,7 @@
 ﻿using Contracts.Events;
 using Microsoft.EntityFrameworkCore;
 using OrderService.Data;
+using OrderService.Entities;
 using RabbitMQ.Client;
 using System;
 using System.Collections.Generic;
@@ -14,6 +15,10 @@ namespace OrderRecoveryWorker
     //be rabbitMq mifreste
     public class OutboxPublisherWorker : BackgroundService
     {
+
+        private readonly string _workerId = Guid.NewGuid().ToString();
+
+
         private readonly IServiceScopeFactory _scopeFactory;
         private readonly IConnection _connection;
         private readonly ILogger<OutboxPublisherWorker> _logger;
@@ -46,11 +51,15 @@ namespace OrderRecoveryWorker
                     var db = scope.ServiceProvider
                         .GetRequiredService<OrderDbContext>();
 
-                    var messages = await db.OutboxMessages
-                        .Where(x => x.ProcessedAt == null)
-                        .OrderBy(x => x.CreatedAt)
-                        .Take(10)
-                        .ToListAsync(stoppingToken);
+                    //In baraye 1 worker khobe vali age 2 ta worker dashte bashim bayad lock konim
+                    //pas az in estefade nemikonim va mirim be method ClaimMessagesAsync
+                    //var messages = await db.OutboxMessages
+                    //    .Where(x => x.ProcessedAt == null)
+                    //    .OrderBy(x => x.CreatedAt)
+                    //    .Take(10)
+                    //    .ToListAsync(stoppingToken);
+
+                    var messages = await ClaimMessagesAsync(db, stoppingToken);
 
                     if (messages.Any())
                     {
@@ -113,6 +122,10 @@ namespace OrderRecoveryWorker
                                     message.Id);
                             }
 
+                            //pak kardan qofl ha
+                            message.LockedBy = null;
+                            message.LockedUntil = null;
+
                             await db.SaveChangesAsync(stoppingToken);
                         }
                     }
@@ -128,6 +141,43 @@ namespace OrderRecoveryWorker
                     TimeSpan.FromSeconds(5),
                     stoppingToken);
             }
+        }
+
+        //UPDLOCK: هنگام انتخاب پیام، قفل Update می‌گیرد
+        //READPAST: اگر Worker دیگری رکوردی را قفل کرده باشد، از آن عبور می‌کند
+        //ROWLOCK: درخواست قفل در سطح رکورد می‌دهد
+        //UPDATE: پیام‌های انتخاب‌شده را به نام Worker فعلی قفل می‌کند
+        //OUTPUT INSERTED.*: نسخه جدید رکوردهای قفل‌شده را برمی‌گرداند
+        //Commit: قفل‌های تراکنش آزاد می‌شوند، اما قفل منطقی ما یعنی LockedUntil در دیتابیس باقی می‌ماند
+        private async Task<List<OutboxMessage>> ClaimMessagesAsync(OrderDbContext db,CancellationToken stoppingToken)
+        {
+            using var transaction =
+                await db.Database.BeginTransactionAsync(stoppingToken);
+
+            var messages = await db.OutboxMessages
+                .FromSqlInterpolated($@"
+            ;WITH MessagesToClaim AS
+            (
+                SELECT TOP (10) *
+                FROM OutboxMessages WITH (UPDLOCK, READPAST, ROWLOCK)
+                WHERE ProcessedAt IS NULL
+                  AND (
+                      LockedUntil IS NULL
+                      OR LockedUntil < SYSUTCDATETIME()
+                  )
+                ORDER BY CreatedAt
+            )
+            UPDATE MessagesToClaim
+            SET
+                LockedBy = {_workerId},
+                LockedUntil = DATEADD(MINUTE, 2, SYSUTCDATETIME())
+            OUTPUT INSERTED.*;
+        ")
+                .ToListAsync(stoppingToken);
+
+            await transaction.CommitAsync(stoppingToken);
+
+            return messages;
         }
     }
 }
