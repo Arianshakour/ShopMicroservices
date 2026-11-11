@@ -1,5 +1,6 @@
 ﻿using Contracts.Events;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using OrderService.Data;
 using OrderService.Dtos;
@@ -94,6 +95,7 @@ namespace OrderService.Controllers
             return Ok(product);
         }
         [HttpPost]
+        [EnableRateLimiting("OrderPolicy")]
         public async Task<IActionResult> Create(CreateOrderRequest request,
             CancellationToken cancellationToken)
         {
